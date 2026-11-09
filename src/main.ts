@@ -1,23 +1,33 @@
 import './style.css';
 import * as G from './state';
-import type { BuildingId, Good } from './state';
+import type { BuildingId, Good, RivalId, Schwierigkeit, Zweig } from './state';
 
-type Tab = 'stadt' | 'lager' | 'markt' | 'auftraege';
+type Tab = 'stadt' | 'lager' | 'markt' | 'auftraege' | 'forschung';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'stadt', label: 'Stadt' },
   { id: 'lager', label: 'Lager' },
   { id: 'markt', label: 'Markt' },
   { id: 'auftraege', label: 'Aufträge' },
+  { id: 'forschung', label: 'Forschung' },
 ];
+
+const SCHW_LABEL: Record<Schwierigkeit, string> = { lehrling: 'Lehrling', geselle: 'Geselle', meister: 'Meister' };
+const SCHW_TEXT: Record<Schwierigkeit, string> = {
+  lehrling: 'Rivalen sind langsam und nehmen seltener Aufträge.',
+  geselle: 'Ausgewogen.',
+  meister: 'Rivalen greifen schnell zu und treiben die Preise stärker.',
+};
 
 const app = document.getElementById('app')!;
 
+let phase: 'start' | 'spiel' = 'start';
 let s: G.GameState = G.createGame(Math.floor(Math.random() * 1_000_000));
 let tab: Tab = 'stadt';
 let message = '';
 let sheet:
   | { type: 'build'; slot: number }
   | { type: 'info'; slot: number }
+  | { type: 'report' }
   | null = null;
 
 // Haptik: kurze Vibrationsmuster. Die Vibrations-API gibt es nur in Android-Chrome.
@@ -47,18 +57,34 @@ function result(err: string | null) {
 
 const fmt = (n: number) => Math.round(n).toString();
 
+function startHtml(): string {
+  const opts = G.SCHWIERIGKEITEN.map(
+    (k) => `<button class="opt" data-act="start" data-arg="${k}">
+      <span>${SCHW_LABEL[k]}</span><small>${SCHW_TEXT[k]}</small></button>`,
+  ).join('');
+  return `<div class="start">
+    <h1>Gildenstadt</h1>
+    <p class="muted">Baue eine Handelsgilde auf, forsche, handle und erreiche den Gildenrang, bevor die Rivalen dich überholen.</p>
+    <h2>Schwierigkeit</h2>
+    ${opts}
+  </div>`;
+}
+
 function sheetHtml(): string {
   if (!sheet) return '';
   const sh = sheet;
+  if (sh.type === 'report') return reportHtml();
   if (sh.type === 'build') {
-    const opts = G.BUILDINGS.map((id) => {
-      const d = G.DEF(id);
-      const cost = Object.entries(d.cost)
-        .map(([k, n]) => `${n} ${k === 'gold' ? 'Gold' : G.label(k as Good)}`)
-        .join(', ');
-      return `<button class="opt" data-act="build" data-arg="${sh.slot}|${id}">
-        <span>${d.label}</span><small>${cost}</small></button>`;
-    }).join('');
+    const opts = G.BUILDINGS.filter((id) => G.freigegeben(s, id))
+      .map((id) => {
+        const d = G.DEF(id);
+        const cost = Object.entries(d.cost)
+          .map(([k, n]) => `${n} ${k === 'gold' ? 'Gold' : G.label(k as Good)}`)
+          .join(', ');
+        return `<button class="opt" data-act="build" data-arg="${sh.slot}|${id}">
+          <span>${d.label}</span><small>${cost}</small></button>`;
+      })
+      .join('');
     return `<div class="overlay"><div class="sheet">
       <h3>Gebäude wählen</h3>${opts}
       <button class="ghost" data-act="close">Abbrechen</button>
@@ -68,12 +94,37 @@ function sheetHtml(): string {
   if (!id) return '';
   const d = G.DEF(id);
   const ins = Object.entries(d.in).map(([g, n]) => `${n} ${G.label(g as Good)}`).join(', ') || 'nichts';
-  const outs = Object.entries(d.out).map(([g, n]) => `${n} ${G.label(g as Good)}`).join(', ');
+  const outList = Object.entries(d.out).map(([g, n]) => `${n} ${G.label(g as Good)}`);
+  if (d.wissen) outList.push(`${d.wissen} Wissen`);
+  const outs = outList.join(', ') || 'nichts';
   return `<div class="overlay"><div class="sheet">
     <h3>${d.label}</h3>
     <p>Verbraucht: ${ins}</p>
     <p>Produziert pro Runde: ${outs}</p>
     <button class="ghost" data-act="close">Schließen</button>
+  </div></div>`;
+}
+
+function listGoods(o: Partial<Record<Good, number>>): string {
+  const parts = (Object.entries(o) as [Good, number][])
+    .filter(([, n]) => n > 0)
+    .map(([g, n]) => `${n} ${G.label(g)}`);
+  return parts.length ? parts.join(', ') : 'nichts';
+}
+
+function reportHtml(): string {
+  const r = s.report;
+  if (!r) return '';
+  const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+  return `<div class="overlay"><div class="sheet">
+    <h3>Bericht Runde ${r.turn}</h3>
+    <p>Produziert: ${listGoods(r.produced)}</p>
+    <p>Verbraucht: ${listGoods(r.consumed)}</p>
+    ${r.stalled ? `<p class="warn">${r.stalled} Gebäude standen still (fehlende Rohstoffe).</p>` : ''}
+    <p>Zufriedenheit: ${r.zufNow} (${sign(r.zufDelta)})</p>
+    <p>Einwohner: ${r.popNow} (${sign(r.popDelta)})</p>
+    ${r.rival ? `<p class="muted">${r.rival}</p>` : ''}
+    <button data-act="close">Weiter</button>
   </div></div>`;
 }
 
@@ -84,8 +135,67 @@ function endHtml(): string {
     <p>${won
       ? `Du hast in ${s.turn - 1} Runden ${s.ruf} Ruf erreicht.`
       : `Du hast ${s.ruf} von ${G.CFG.winRuf} Ruf erreicht.`}</p>
-    <button data-act="restart">Neues Spiel</button>
+    <button data-act="neu">Neues Spiel</button>
   </div></div>`;
+}
+
+function forschungHtml(): string {
+  const zweige = G.ZWEIGE.map((z) => {
+    const lvl = s.forschung[z.id];
+    const stufen = z.stufen
+      .map((st, i) => {
+        const cls = i < lvl ? 'done' : i === lvl ? 'next' : 'locked';
+        const aktion =
+          cls === 'next'
+            ? `<button data-act="forschen" data-arg="${z.id}" ${s.wissen >= st.kosten ? '' : 'disabled'}>Erforschen (${st.kosten} W)</button>`
+            : cls === 'done'
+              ? '<span class="muted">erforscht</span>'
+              : `<span class="muted">${st.kosten} W</span>`;
+        return `<div class="stufe ${cls}">
+          <div class="stufe-kopf"><b>${st.name}</b>${aktion}</div>
+          <small>${st.text}</small>
+          <small class="muted">Gildenrecht: ${st.recht}</small>
+        </div>`;
+      })
+      .join('');
+    return `<section><h2>${z.label}</h2>${stufen}</section>`;
+  }).join('');
+
+  let monopol = '';
+  if (G.hatMonopol(s)) {
+    monopol = s.monopolGut
+      ? `<p class="muted">Handelsmonopol auf: ${G.label(s.monopolGut)}</p>`
+      : `<section><h2>Handelsmonopol-Gut wählen</h2><div class="res-grid">${G.GOODS.map(
+          (g) => `<button data-act="monopol" data-arg="${g}">${G.label(g)}</button>`,
+        ).join('')}</div></section>`;
+  }
+  return `<p>Wissen: <b>${s.wissen}</b></p>${zweige}${monopol}`;
+}
+
+function buendnisHtml(): string {
+  const rows = s.rivals
+    .map((r) => {
+      const d = G.RIVALEN[r.id];
+      let aktion: string;
+      if (!d.buendnisMoeglich) aktion = '<span class="muted">lehnt ab</span>';
+      else if (s.buendnis?.rival === r.id)
+        aktion = `<button data-act="buendnisBrechen">Brechen (−${G.BUENDNIS.bruchRuf} Ruf)</button>`;
+      else if (s.buendnis) aktion = '<span class="muted">anderes Bündnis aktiv</span>';
+      else aktion = `<button data-act="buendnis" data-arg="${r.id}">Schließen</button>`;
+      const gegenleistung =
+        r.id === 'haendler'
+          ? `${G.BUENDNIS.haendlerGold} Gold pro Runde`
+          : 'ein Tuch oder Werkzeug pro Runde';
+      const info = d.buendnisMoeglich
+        ? `Gegenleistung: ${gegenleistung}, ${G.BUENDNIS.dauer} Runden`
+        : 'Bündnisse sind nicht möglich';
+      return `<div class="row"><span>${d.label}<br/><small>${info}</small></span>${aktion}</div>`;
+    })
+    .join('');
+  const status = s.buendnis
+    ? `<p class="muted">Aktives Bündnis mit ${G.rivalLabel(s.buendnis.rival)}: noch ${s.buendnis.verbleibend} Runden.</p>`
+    : '';
+  return `<section><h2>Bündnisse</h2>${status}${rows}</section>`;
 }
 
 function tabContent(): string {
@@ -135,15 +245,23 @@ function tabContent(): string {
             )
             .join('')
         : '<p class="muted">Keine Aufträge.</p>';
-      return `<section><h2>Aufträge</h2>${contracts}</section>`;
+      return `<section><h2>Aufträge</h2>${contracts}</section>${buendnisHtml()}`;
     }
+    case 'forschung':
+      return forschungHtml();
   }
   return '';
 }
 
 function render() {
+  if (phase === 'start') {
+    app.innerHTML = startHtml();
+    return;
+  }
+
   const rang = G.rangOf(s.ruf);
   const next = G.RANG.find((r) => r.ruf > s.ruf);
+  const rivalen = s.rivals.map((r) => `${G.rivalLabel(r.id)} ${r.ruf}`).join(' · ');
 
   const tabbar = TABS.map(
     (t) => `<button class="tab ${t.id === tab ? 'active' : ''}" data-act="tab" data-arg="${t.id}">
@@ -160,7 +278,8 @@ function render() {
       <div class="rank">${rang.name} · Ruf ${s.ruf}/${G.CFG.winRuf}${
         next ? ` · nächster Rang bei ${next.ruf}` : ''
       }</div>
-      <div class="stats">Einwohner ${s.pop} · Zufriedenheit ${fmt(s.zufriedenheit)}</div>
+      <div class="stats">Einwohner ${s.pop} · Zufriedenheit ${fmt(s.zufriedenheit)} · Wissen ${s.wissen}</div>
+      <div class="stats">Rivalen: ${rivalen} (${SCHW_LABEL[s.schwierigkeit]})</div>
     </header>
 
     <main>
@@ -186,6 +305,19 @@ app.addEventListener('click', (e) => {
   message = '';
 
   switch (act) {
+    case 'start':
+      s = G.createGame(Math.floor(Math.random() * 1_000_000), arg as Schwierigkeit);
+      phase = 'spiel';
+      tab = 'stadt';
+      sheet = null;
+      haptic('tap');
+      break;
+    case 'neu':
+      phase = 'start';
+      sheet = null;
+      tab = 'stadt';
+      haptic('tap');
+      break;
     case 'tab':
       if (tab !== arg) haptic('tap');
       tab = arg as Tab;
@@ -217,21 +349,27 @@ app.addEventListener('click', (e) => {
     case 'fulfill':
       result(G.fulfill(s, Number(arg)));
       break;
+    case 'forschen':
+      result(G.forschen(s, arg as Zweig));
+      break;
+    case 'monopol':
+      result(G.monopolWaehlen(s, arg as Good));
+      break;
+    case 'buendnis':
+      result(G.buendnisSchliessen(s, arg as RivalId));
+      break;
+    case 'buendnisBrechen':
+      result(G.buendnisBrechen(s));
+      break;
     case 'end':
       G.endTurn(s);
-      sheet = null;
+      sheet = s.status === 'playing' ? { type: 'report' } : null;
       if (s.status === 'won') haptic('win');
       else if (s.status === 'lost') haptic('lose');
       else haptic('turn');
       break;
     case 'close':
       sheet = null;
-      break;
-    case 'restart':
-      s = G.createGame(Math.floor(Math.random() * 1_000_000));
-      sheet = null;
-      tab = 'stadt';
-      haptic('tap');
       break;
   }
   render();

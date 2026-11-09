@@ -30,8 +30,51 @@
     "feld": { "label": "Feld", "cost": { "gold": 30, "holz": 3 }, "in": {}, "out": { "getreide": 3 } },
     "schmiede": { "label": "Schmiede", "cost": { "gold": 80, "holz": 10 }, "in": { "erz": 2, "holz": 1 }, "out": { "werkzeug": 1 } },
     "baeckerei": { "label": "Bäckerei", "cost": { "gold": 50, "holz": 6 }, "in": { "getreide": 2 }, "out": { "brot": 2 } },
-    "weberei": { "label": "Weberei", "cost": { "gold": 50, "holz": 4 }, "in": { "getreide": 1 }, "out": { "tuch": 1 } }
+    "weberei": { "label": "Weberei", "cost": { "gold": 50, "holz": 4 }, "in": { "getreide": 1 }, "out": { "tuch": 1 } },
+    "schreibstube": { "label": "Schreibstube", "cost": { "gold": 40, "holz": 4 }, "in": { "holz": 1 }, "out": {}, "wissen": 2 },
+    "werkstatt": { "label": "Werkstatt", "cost": { "gold": 60, "holz": 6 }, "in": { "holz": 2 }, "out": { "werkzeug": 1 }, "freigabe": "werkstatt" }
   },
+  "forschung": {
+    "zweige": [
+      {
+        "id": "handwerk",
+        "label": "Handwerk",
+        "stufen": [
+          { "name": "Werkstatt", "kosten": 2, "text": "Schaltet die Werkstatt frei: Holz wird zu Werkzeug.", "recht": "Werkstatt-Erlass", "effekte": [{ "typ": "freigabe", "gebaeude": "werkstatt" }] },
+          { "name": "Zunftrecht", "kosten": 4, "text": "Die Schmiede stellt +1 Werkzeug pro Runde her.", "recht": "Zunftsiegel", "effekte": [{ "typ": "bonus", "gebaeude": "schmiede", "gut": "werkzeug", "wert": 1 }] },
+          { "name": "Meisterbriefe", "kosten": 6, "text": "Die Schmiede braucht 1 Erz weniger.", "recht": "Meisterbrief", "effekte": [{ "typ": "erzSparen", "gebaeude": "schmiede", "wert": 1 }] },
+          { "name": "Werkbank-Netz", "kosten": 9, "text": "Die Werkstatt stellt +1 Werkzeug pro Runde her.", "recht": "Werkbank-Netz", "effekte": [{ "typ": "bonus", "gebaeude": "werkstatt", "gut": "werkzeug", "wert": 1 }] }
+        ]
+      },
+      {
+        "id": "handel",
+        "label": "Handel",
+        "stufen": [
+          { "name": "Kontor", "kosten": 2, "text": "Verkauf bringt 90 % statt 80 % des Marktpreises.", "recht": "Kontorbrief", "effekte": [{ "typ": "verkaufsquote", "wert": 0.9 }] },
+          { "name": "Handelsbriefe", "kosten": 4, "text": "Ein vierter Auftrag kann gleichzeitig offen sein.", "recht": "Handelsbrief", "effekte": [{ "typ": "auftragsslots", "wert": 4 }] },
+          { "name": "Karawanen", "kosten": 6, "text": "Aufträge bringen 25 % mehr Gold.", "recht": "Karawanenschutz", "effekte": [{ "typ": "auftragsbonus", "wert": 0.25 }] },
+          { "name": "Handelsmonopol", "kosten": 9, "text": "Ein gewähltes Gut verliert beim Verkauf nicht an Preis.", "recht": "Monopol", "effekte": [{ "typ": "monopol" }] }
+        ]
+      },
+      {
+        "id": "verwaltung",
+        "label": "Verwaltung",
+        "stufen": [
+          { "name": "Gildenhaus", "kosten": 2, "text": "+1 Zufriedenheit pro Runde.", "recht": "Gildensiegel", "effekte": [{ "typ": "zufriedenheit", "wert": 1 }] },
+          { "name": "Stadtrat", "kosten": 4, "text": "Das Raster wächst auf 16 Plätze.", "recht": "Ratsbeschluss", "effekte": [{ "typ": "raster", "wert": 16 }] },
+          { "name": "Stadtplanung", "kosten": 6, "text": "Die Obergrenze der Einwohner steigt auf 14.", "recht": "Bauordnung", "effekte": [{ "typ": "einwohner", "wert": 14 }] },
+          { "name": "Großer Rat", "kosten": 9, "text": "Das Raster wächst auf 20 Plätze.", "recht": "Großer Rat", "effekte": [{ "typ": "raster", "wert": 20 }] }
+        ]
+      }
+    ]
+  },
+  "schwierigkeit": { "lehrling": 0.5, "geselle": 0.75, "meister": 1.0 },
+  "rivalen": {
+    "haendler": { "label": "Händlergilde", "buendnisMoeglich": true, "auftragChance": 0.3 },
+    "handwerker": { "label": "Handwerkerzunft", "buendnisMoeglich": true, "auftragChance": 0.15, "preisDruck": 0.05 },
+    "verwalter": { "label": "Verwaltungsrat", "buendnisMoeglich": false, "auftragChance": 0.5, "rufProRunde": 1, "bonusRuf": 2, "bonusAb": 4 }
+  },
+  "buendnis": { "dauer": 5, "bruchRuf": 3, "haendlerGold": 15 },
   "rang": [
     { "ruf": 0, "name": "Lehrling" },
     { "ruf": 10, "name": "Geselle" },

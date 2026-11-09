@@ -36,6 +36,26 @@ header {
 header .top { display: flex; justify-content: space-between; font-weight: 600; }
 header .rank { color: var(--accent); margin-top: 4px; }
 header .stats, .muted, small { color: var(--muted); font-size: 0.85rem; }
+.warn { color: var(--bad); }
+
+.stufe {
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stufe.done { border-left: 3px solid var(--good); }
+.stufe.next { border-left: 3px solid var(--accent); }
+.stufe.locked { opacity: 0.55; }
+.stufe-kopf { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.stufe-kopf button { padding: 8px 10px; min-height: 36px; font-size: 0.85rem; }
+
+.start { padding: 48px 4px 24px; }
+.start h1 { font-size: 2rem; margin: 0 0 8px; color: var(--accent); }
+.start .opt { margin-top: 8px; }
 
 main { padding-bottom: 180px; }
 
@@ -55,7 +75,7 @@ main { padding-bottom: 180px; }
 .bottom .end { margin-top: 0; }
 .tabbar {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 6px;
   margin-top: 8px;
 }
