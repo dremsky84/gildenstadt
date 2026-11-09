@@ -57,7 +57,7 @@ describe('Gildenstadt Spiellogik', () => {
 
   it('Verkauf ohne Ware schlägt fehl', () => {
     const s = G.createGame(1);
-    expect(G.sell(s, 'tuch')).not.toBeNull();
+    expect(G.sell(s, 'erz')).not.toBeNull();
   });
 
   it('Auftrag braucht die Ware und bringt Gold und Ruf', () => {
@@ -87,6 +87,33 @@ describe('Gildenstadt Spiellogik', () => {
     s.inv[c.good] = c.amount;
     G.fulfill(s, c.id);
     expect(s.status).toBe('won');
+  });
+
+  it('Versorgte Bevölkerung wird nicht in einer Runde unglücklich', () => {
+    const s = G.createGame(1);
+    s.inv.brot = 10;
+    s.inv.tuch = 10;
+    const z = s.zufriedenheit;
+    G.endTurn(s);
+    expect(s.zufriedenheit).toBeGreaterThan(z);
+  });
+
+  it('Ohne Versorgung sinkt die Zufriedenheit langsamer als sie vorher steigt', () => {
+    const s = G.createGame(1);
+    s.inv.brot = 0;
+    s.inv.tuch = 0;
+    const z = s.zufriedenheit;
+    G.endTurn(s);
+    expect(z - s.zufriedenheit).toBeLessThanOrEqual(10);
+    expect(s.pop).toBe(G.CFG.startPop);
+  });
+
+  it('Bevölkerung wächst nur bei voller Versorgung', () => {
+    const s = G.createGame(1);
+    s.inv.brot = 10;
+    s.inv.tuch = 10;
+    G.endTurn(s);
+    expect(s.pop).toBe(G.CFG.startPop + 1);
   });
 
   it('Rang steigt mit dem Ruf', () => {

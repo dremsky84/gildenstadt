@@ -80,11 +80,11 @@ export function createGame(seed = 1): GameState {
     turn: 1,
     gold: CFG.startGold,
     ruf: 0,
-    inv: { holz: 10, erz: 0, getreide: 5, werkzeug: 0, brot: 0, tuch: 0 },
+    inv: { holz: 10, erz: 0, getreide: 5, werkzeug: 0, brot: 2, tuch: 2 },
     prices: Object.fromEntries(GOODS.map((g) => [g, GOODDEF[g].base])) as Record<Good, number>,
     slots: Array(CFG.slots).fill(null),
     pop: CFG.startPop,
-    zufriedenheit: CFG.startZufriedenheit,
+    zufriedenheit: CFG.zufriedenheit.start,
     contracts: [],
     nextContractId: 1,
     log: ['Willkommen, Gildenmeister. Baue deine Stadt auf.'],
@@ -175,20 +175,22 @@ export function endTurn(s: GameState): void {
   }
   if (stalled) s.log.push(`${stalled} Gebäude standen still (fehlende Rohstoffe).`);
 
-  // 2. Verbrauch der Bevölkerung
-  const brotNeed = Math.ceil(s.pop / 3);
-  const tuchNeed = Math.ceil(s.pop / 4);
+  // 2. Verbrauch der Bevölkerung und Zufriedenheit
+  const Z = CFG.zufriedenheit;
+  const brotNeed = Math.ceil(s.pop / Z.brotProEinwohner);
+  const tuchNeed = Math.ceil(s.pop / Z.tuchProEinwohner);
   const brotUsed = Math.min(s.inv.brot, brotNeed);
   const tuchUsed = Math.min(s.inv.tuch, tuchNeed);
   s.inv.brot -= brotUsed;
   s.inv.tuch -= tuchUsed;
-  s.zufriedenheit += brotUsed < brotNeed ? -10 : 3;
-  s.zufriedenheit += tuchUsed < tuchNeed ? -5 : 2;
+  s.zufriedenheit += brotUsed < brotNeed ? Z.brotFehlt : Z.brotOk;
+  s.zufriedenheit += tuchUsed < tuchNeed ? Z.tuchFehlt : Z.tuchOk;
   s.zufriedenheit = clamp(s.zufriedenheit, 0, 100);
 
-  // 3. Bevölkerung wächst oder schrumpft
-  if (s.zufriedenheit >= 60 && s.pop < CFG.maxPop) s.pop++;
-  else if (s.zufriedenheit <= 20 && s.pop > 1) s.pop--;
+  // 3. Bevölkerung wächst nur bei voller Versorgung, schrumpft bei sehr geringer Zufriedenheit
+  const versorgt = brotUsed >= brotNeed && tuchUsed >= tuchNeed;
+  if (versorgt && s.zufriedenheit >= Z.wachstumAb && s.pop < CFG.maxPop) s.pop++;
+  else if (s.zufriedenheit <= Z.schrumpfenUnter && s.pop > 1) s.pop--;
 
   // 4. Markt erholt sich Richtung Grundpreis
   for (const g of GOODS) {

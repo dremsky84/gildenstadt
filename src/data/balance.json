@@ -1,7 +1,17 @@
 {
   "startGold": 120,
   "startPop": 4,
-  "startZufriedenheit": 60,
+  "zufriedenheit": {
+    "start": 70,
+    "brotProEinwohner": 4,
+    "tuchProEinwohner": 6,
+    "brotFehlt": -3,
+    "tuchFehlt": -1,
+    "brotOk": 4,
+    "tuchOk": 2,
+    "wachstumAb": 60,
+    "schrumpfenUnter": 10
+  },
   "maxPop": 12,
   "maxTurns": 20,
   "winRuf": 40,
