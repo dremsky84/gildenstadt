@@ -1,0 +1,32 @@
+{
+  "startGold": 120,
+  "startPop": 4,
+  "startZufriedenheit": 60,
+  "maxPop": 12,
+  "maxTurns": 20,
+  "winRuf": 40,
+  "slots": 12,
+  "goods": {
+    "holz": { "label": "Holz", "base": 5 },
+    "erz": { "label": "Erz", "base": 8 },
+    "getreide": { "label": "Getreide", "base": 4 },
+    "werkzeug": { "label": "Werkzeug", "base": 20 },
+    "brot": { "label": "Brot", "base": 8 },
+    "tuch": { "label": "Tuch", "base": 12 }
+  },
+  "buildings": {
+    "saegewerk": { "label": "Sägewerk", "cost": { "gold": 40, "holz": 5 }, "in": {}, "out": { "holz": 3 } },
+    "mine": { "label": "Mine", "cost": { "gold": 60, "holz": 8 }, "in": {}, "out": { "erz": 3 } },
+    "feld": { "label": "Feld", "cost": { "gold": 30, "holz": 3 }, "in": {}, "out": { "getreide": 3 } },
+    "schmiede": { "label": "Schmiede", "cost": { "gold": 80, "holz": 10 }, "in": { "erz": 2, "holz": 1 }, "out": { "werkzeug": 1 } },
+    "baeckerei": { "label": "Bäckerei", "cost": { "gold": 50, "holz": 6 }, "in": { "getreide": 2 }, "out": { "brot": 2 } },
+    "weberei": { "label": "Weberei", "cost": { "gold": 50, "holz": 4 }, "in": { "getreide": 1 }, "out": { "tuch": 1 } }
+  },
+  "rang": [
+    { "ruf": 0, "name": "Lehrling" },
+    { "ruf": 10, "name": "Geselle" },
+    { "ruf": 20, "name": "Meister" },
+    { "ruf": 30, "name": "Altmeister" },
+    { "ruf": 40, "name": "Gildenvorsteher" }
+  ]
+}
