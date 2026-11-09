@@ -25,14 +25,14 @@
     "tuch": { "label": "Tuch", "base": 12 }
   },
   "buildings": {
-    "saegewerk": { "label": "Sägewerk", "cost": { "gold": 40, "holz": 5 }, "in": {}, "out": { "holz": 3 } },
-    "mine": { "label": "Mine", "cost": { "gold": 60, "holz": 8 }, "in": {}, "out": { "erz": 3 } },
-    "feld": { "label": "Feld", "cost": { "gold": 30, "holz": 3 }, "in": {}, "out": { "getreide": 3 } },
-    "schmiede": { "label": "Schmiede", "cost": { "gold": 80, "holz": 10 }, "in": { "erz": 2, "holz": 1 }, "out": { "werkzeug": 1 } },
-    "baeckerei": { "label": "Bäckerei", "cost": { "gold": 50, "holz": 6 }, "in": { "getreide": 2 }, "out": { "brot": 2 } },
-    "weberei": { "label": "Weberei", "cost": { "gold": 50, "holz": 4 }, "in": { "getreide": 1 }, "out": { "tuch": 1 } },
-    "schreibstube": { "label": "Schreibstube", "cost": { "gold": 40, "holz": 4 }, "in": { "holz": 1 }, "out": {}, "wissen": 2 },
-    "werkstatt": { "label": "Werkstatt", "cost": { "gold": 60, "holz": 6 }, "in": { "holz": 2 }, "out": { "werkzeug": 1 }, "freigabe": "werkstatt" }
+    "saegewerk": { "label": "Sägewerk", "text": "Sägt Holz aus dem Wald. Holz brauchst du für fast jeden Bau.","cost": { "gold": 40, "holz": 5 }, "in": {}, "out": { "holz": 3 } },
+    "mine": { "label": "Mine", "text": "Fördert Erz. Erz braucht die Schmiede für Werkzeug.","cost": { "gold": 60, "holz": 8 }, "in": {}, "out": { "erz": 3 } },
+    "feld": { "label": "Feld", "text": "Bringt Getreide ein. Getreide verarbeiten Bäckerei und Weberei.","cost": { "gold": 30, "holz": 3 }, "in": {}, "out": { "getreide": 3 } },
+    "schmiede": { "label": "Schmiede", "text": "Schmiedet aus Erz und Holz Werkzeug.","cost": { "gold": 80, "holz": 10 }, "in": { "erz": 2, "holz": 1 }, "out": { "werkzeug": 1 } },
+    "baeckerei": { "label": "Bäckerei", "text": "Backt aus Getreide Brot. Brot versorgt die Bevölkerung.","cost": { "gold": 50, "holz": 6 }, "in": { "getreide": 2 }, "out": { "brot": 2 } },
+    "weberei": { "label": "Weberei", "text": "Webt aus Getreide Tuch. Tuch versorgt die Bevölkerung.","cost": { "gold": 50, "holz": 4 }, "in": { "getreide": 1 }, "out": { "tuch": 1 } },
+    "schreibstube": { "label": "Schreibstube", "text": "Sammelt Wissen. Jede Runde Wissen für die Forschung.","cost": { "gold": 40, "holz": 4 }, "in": { "holz": 1 }, "out": {}, "wissen": 2 },
+    "werkstatt": { "label": "Werkstatt", "text": "Verarbeitet Holz zu Werkzeug. Muss erst erforscht werden.","cost": { "gold": 60, "holz": 6 }, "in": { "holz": 2 }, "out": { "werkzeug": 1 }, "freigabe": "werkstatt" }
   },
   "forschung": {
     "zweige": [

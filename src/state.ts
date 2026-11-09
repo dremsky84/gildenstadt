@@ -35,6 +35,7 @@ export interface Zweigdef {
 
 interface BuildingDef {
   label: string;
+  text: string;
   cost: Partial<Record<Good | 'gold', number>>;
   in: Partial<Record<Good, number>>;
   out: Partial<Record<Good, number>>;

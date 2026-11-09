@@ -1,11 +1,12 @@
 import './style.css';
 import * as G from './state';
 import type { BuildingId, Good, RivalId, Schwierigkeit, Zweig } from './state';
+import { serialize, deserialize, SAVE_KEY } from './save';
+import { ICONS } from './icons';
 
-type Tab = 'stadt' | 'lager' | 'markt' | 'auftraege' | 'forschung';
+type Tab = 'stadt' | 'markt' | 'auftraege' | 'forschung';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'stadt', label: 'Stadt' },
-  { id: 'lager', label: 'Lager' },
   { id: 'markt', label: 'Markt' },
   { id: 'auftraege', label: 'Aufträge' },
   { id: 'forschung', label: 'Forschung' },
@@ -28,7 +29,58 @@ let sheet:
   | { type: 'build'; slot: number }
   | { type: 'info'; slot: number }
   | { type: 'report' }
+  | { type: 'log' }
   | null = null;
+
+// --- Speicherung im Browser ---
+
+function storage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function ladeSpielstand(): G.GameState | null {
+  const st = storage();
+  if (!st) return null;
+  try {
+    const text = st.getItem(SAVE_KEY);
+    return text ? deserialize(text) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Gibt false zurück, wenn der Browser das Speichern verweigert.
+function speichereSpielstand(): boolean {
+  const st = storage();
+  if (!st) return false;
+  try {
+    st.setItem(SAVE_KEY, serialize(s));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function loescheSpielstand() {
+  try {
+    storage()?.removeItem(SAVE_KEY);
+  } catch {
+    // Ohne Speicher ist nichts zu löschen.
+  }
+}
+
+// Nach jeder Aktion: laufende Partie sichern, beendete Partie aus dem Speicher entfernen.
+function automatischSichern() {
+  if (phase !== 'spiel') return;
+  if (s.status === 'playing') speichereSpielstand();
+  else loescheSpielstand();
+}
+
+// --- Haptik ---
 
 // Haptik: kurze Vibrationsmuster. Die Vibrations-API gibt es nur in Android-Chrome.
 // Auf iPhones bleibt das Feedback stumm, die Bedienung funktioniert trotzdem.
@@ -58,14 +110,34 @@ function result(err: string | null) {
 const fmt = (n: number) => Math.round(n).toString();
 
 function startHtml(): string {
+  const weiter = ladeSpielstand() !== null;
+  const weiterKnopf = weiter
+    ? `<button class="opt" data-act="weiter"><span>Weiterspielen</span><small>Gespeicherte Partie fortsetzen</small></button>`
+    : '';
   const opts = G.SCHWIERIGKEITEN.map(
     (k) => `<button class="opt" data-act="start" data-arg="${k}">
       <span>${SCHW_LABEL[k]}</span><small>${SCHW_TEXT[k]}</small></button>`,
   ).join('');
+  const hinweis = weiter ? '<p class="muted">Ein neues Spiel ersetzt den gespeicherten Stand.</p>' : '';
   return `<div class="start">
     <h1>Gildenstadt</h1>
     <p class="muted">Baue eine Handelsgilde auf, forsche, handle und erreiche den Gildenrang, bevor die Rivalen dich überholen.</p>
-    <h2>Schwierigkeit</h2>
+    <section class="ziel">
+      <h2>Ziel</h2>
+      <p>Erreiche 40 Ruf, bevor ein Rivale es tut. Nach 20 Runden gewinnt, wer den meisten Ruf hat.</p>
+      <h2>So spielst du</h2>
+      <ul class="howto">
+        <li><b>Stadt:</b> Baue Gebäude auf freie Plätze. Sie produzieren Waren.</li>
+        <li><b>Markt:</b> Kaufe und verkaufe Waren. Die Preise schwanken.</li>
+        <li><b>Aufträge:</b> Liefere Waren für Gold und Ruf.</li>
+        <li><b>Forschung:</b> Wissen aus der Schreibstube schaltet neue Gebäude und Vorteile frei.</li>
+        <li><b>Bündnisse:</b> Schließe Verträge mit Rivalen. Ein Bruch kostet Ruf.</li>
+        <li><b>Runde beenden:</b> Produktion, Versorgung und Rivalen ziehen weiter.</li>
+      </ul>
+    </section>
+    ${weiterKnopf}
+    <h2>Neues Spiel</h2>
+    ${hinweis}
     ${opts}
   </div>`;
 }
@@ -74,6 +146,7 @@ function sheetHtml(): string {
   if (!sheet) return '';
   const sh = sheet;
   if (sh.type === 'report') return reportHtml();
+  if (sh.type === 'log') return logHtml();
   if (sh.type === 'build') {
     const opts = G.BUILDINGS.filter((id) => G.freigegeben(s, id))
       .map((id) => {
@@ -82,11 +155,14 @@ function sheetHtml(): string {
           .map(([k, n]) => `${n} ${k === 'gold' ? 'Gold' : G.label(k as Good)}`)
           .join(', ');
         return `<button class="opt" data-act="build" data-arg="${sh.slot}|${id}">
-          <span>${d.label}</span><small>${cost}</small></button>`;
+          <span class="ico">${ICONS[id]}</span>
+          <span class="txt">${d.label}<br/><small>${d.text}</small></span><small>${cost}</small></button>`;
       })
       .join('');
     return `<div class="overlay"><div class="sheet">
-      <h3>Gebäude wählen</h3>${opts}
+      <h3>Gebäude wählen</h3>
+      <p class="muted">Im Lager: ${listGoods(s.inv)}</p>
+      ${opts}
       <button class="ghost" data-act="close">Abbrechen</button>
     </div></div>`;
   }
@@ -99,6 +175,7 @@ function sheetHtml(): string {
   const outs = outList.join(', ') || 'nichts';
   return `<div class="overlay"><div class="sheet">
     <h3>${d.label}</h3>
+    <p>${d.text}</p>
     <p>Verbraucht: ${ins}</p>
     <p>Produziert pro Runde: ${outs}</p>
     <button class="ghost" data-act="close">Schließen</button>
@@ -125,6 +202,19 @@ function reportHtml(): string {
     <p>Einwohner: ${r.popNow} (${sign(r.popDelta)})</p>
     ${r.rival ? `<p class="muted">${r.rival}</p>` : ''}
     <button data-act="close">Weiter</button>
+  </div></div>`;
+}
+
+function logHtml(): string {
+  const eintraege = s.log
+    .slice(-30)
+    .reverse()
+    .map((l) => `<li>${l}</li>`)
+    .join('');
+  return `<div class="overlay"><div class="sheet">
+    <h3>Protokoll</h3>
+    <ul class="log">${eintraege || '<li>Noch nichts passiert.</li>'}</ul>
+    <button class="ghost" data-act="close">Schließen</button>
   </div></div>`;
 }
 
@@ -207,20 +297,19 @@ function tabContent(): string {
           return `<button class="slot ${id ? 'built' : 'empty'}" data-act="slot" data-arg="${i}">${name}</button>`;
         })
         .join('');
-      const log = s.log
-        .slice(-8)
-        .reverse()
-        .map((l) => `<li>${l}</li>`)
-        .join('');
-      return `
-        <section><h2>Stadt</h2><div class="slots">${slots}</div></section>
-        <section><h2>Protokoll</h2><ul class="log">${log}</ul></section>`;
-    }
-    case 'lager': {
       const goods = G.GOODS.map(
         (g) => `<div class="res"><span>${G.label(g)}</span><b>${s.inv[g]}</b></div>`,
       ).join('');
-      return `<section><h2>Lager</h2><div class="res-grid">${goods}</div></section>`;
+      return `
+        <section><h2>Stadt</h2><div class="slots">${slots}</div></section>
+        <section><h2>Lager</h2><div class="res-grid">${goods}</div></section>
+        <section><h2>Spiel</h2>
+          <div class="btns">
+            <button data-act="speichern">Speichern</button>
+            <button data-act="hauptmenue">Hauptmenü</button>
+          </div>
+          <p class="muted">Die Partie wird nach jeder Aktion automatisch gespeichert.</p>
+        </section>`;
     }
     case 'markt': {
       const market = G.GOODS.map(
@@ -272,7 +361,8 @@ function render() {
   app.innerHTML = `
     <header>
       <div class="top">
-        <span>Runde ${Math.min(s.turn, G.CFG.maxTurns)}/${G.CFG.maxTurns}</span>
+        <span>Runde ${Math.min(s.turn, G.CFG.maxTurns)}/${G.CFG.maxTurns}
+          <button class="log-btn" data-act="protokoll" aria-label="Protokoll">📝</button></span>
         <span>Gold ${fmt(s.gold)}</span>
       </div>
       <div class="rank">${rang.name} · Ruf ${s.ruf}/${G.CFG.winRuf}${
@@ -312,10 +402,33 @@ app.addEventListener('click', (e) => {
       sheet = null;
       haptic('tap');
       break;
+    case 'weiter': {
+      const gespeichert = ladeSpielstand();
+      if (gespeichert) {
+        s = gespeichert;
+        phase = 'spiel';
+        tab = 'stadt';
+        sheet = null;
+        message = 'Spielstand geladen.';
+        haptic('tap');
+      }
+      break;
+    }
+    case 'speichern':
+      message = speichereSpielstand() ? 'Spielstand gespeichert.' : 'Speichern nicht möglich: Der Browser blockiert den Speicher.';
+      haptic(message.startsWith('Spielstand') ? 'ok' : 'error');
+      break;
+    case 'hauptmenue':
+      phase = 'start';
+      sheet = null;
+      tab = 'stadt';
+      haptic('tap');
+      break;
     case 'neu':
       phase = 'start';
       sheet = null;
       tab = 'stadt';
+      loescheSpielstand();
       haptic('tap');
       break;
     case 'tab':
@@ -368,10 +481,15 @@ app.addEventListener('click', (e) => {
       else if (s.status === 'lost') haptic('lose');
       else haptic('turn');
       break;
+    case 'protokoll':
+      sheet = { type: 'log' };
+      haptic('tap');
+      break;
     case 'close':
       sheet = null;
       break;
   }
+  automatischSichern();
   render();
 });
 
