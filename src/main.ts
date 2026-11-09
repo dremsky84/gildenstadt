@@ -23,13 +23,14 @@ let sheet:
 // Haptik: kurze Vibrationsmuster. Die Vibrations-API gibt es nur in Android-Chrome.
 // Auf iPhones bleibt das Feedback stumm, die Bedienung funktioniert trotzdem.
 type Haptic = 'tap' | 'ok' | 'error' | 'turn' | 'win' | 'lose';
+// Dauer in ms. Sehr kurze Impulse (unter ~15 ms) werden auf vielen Geräten nicht gespürt.
 const PATTERNS: Record<Haptic, number | number[]> = {
-  tap: 8,
-  ok: [12, 40, 18],
-  error: [60, 50, 60],
-  turn: 25,
-  win: [30, 60, 30, 60, 90],
-  lose: [250],
+  tap: 25,
+  ok: [30, 60, 30],
+  error: [120, 80, 120],
+  turn: 50,
+  win: [60, 80, 60, 80, 160],
+  lose: [400],
 };
 function haptic(kind: Haptic) {
   if ('vibrate' in navigator) navigator.vibrate(PATTERNS[kind]);
