@@ -94,9 +94,29 @@ const PATTERNS: Record<Haptic, number | number[]> = {
   win: [60, 80, 60, 80, 160],
   lose: [400],
 };
+const VIBRATION_KEY = 'gildenstadt-vibration';
+let vibrationAn = (() => {
+  try {
+    return storage()?.getItem(VIBRATION_KEY) !== '0';
+  } catch {
+    return true;
+  }
+})();
+
 function haptic(kind: Haptic) {
-  if ('vibrate' in navigator) navigator.vibrate(PATTERNS[kind]);
+  if (vibrationAn && 'vibrate' in navigator) navigator.vibrate(PATTERNS[kind]);
 }
+
+function vibrationUmschalten() {
+  vibrationAn = !vibrationAn;
+  try {
+    storage()?.setItem(VIBRATION_KEY, vibrationAn ? '1' : '0');
+  } catch {
+    // Ohne Speicher gilt die Einstellung nur bis zum Neuladen.
+  }
+}
+
+const vibrationLabel = () => `Vibration: ${vibrationAn ? 'an' : 'aus'}`;
 
 function result(err: string | null) {
   if (err) {
@@ -108,6 +128,13 @@ function result(err: string | null) {
 }
 
 const fmt = (n: number) => Math.round(n).toString();
+
+// Kursentwicklung der letzten Runde als farbige Anzeige.
+function trendHtml(t: number): string {
+  const p = Math.round(t * 100);
+  if (p === 0) return '<span class="muted">→ 0 %</span>';
+  return p > 0 ? `<span class="up">▲ +${p} %</span>` : `<span class="down">▼ ${p} %</span>`;
+}
 
 function startHtml(): string {
   const weiter = ladeSpielstand() !== null;
@@ -139,6 +166,7 @@ function startHtml(): string {
     <h2>Neues Spiel</h2>
     ${hinweis}
     ${opts}
+    <button class="ghost" data-act="vibration">${vibrationLabel()}</button>
   </div>`;
 }
 
@@ -154,7 +182,7 @@ function sheetHtml(): string {
         const cost = Object.entries(d.cost)
           .map(([k, n]) => `${n} ${k === 'gold' ? 'Gold' : G.label(k as Good)}`)
           .join(', ');
-        return `<button class="opt" data-act="build" data-arg="${sh.slot}|${id}">
+        return `<button class="opt" data-act="build" data-arg="${sh.slot}|${id}" ${G.kannBauen(s, id) ? '' : 'disabled'}>
           <span class="ico">${ICONS[id]}</span>
           <span class="txt">${d.label}<br/><small>${d.text}</small></span><small>${cost}</small></button>`;
       })
@@ -306,22 +334,32 @@ function tabContent(): string {
         <section><h2>Spiel</h2>
           <div class="btns">
             <button data-act="speichern">Speichern</button>
+            <button data-act="vibration">${vibrationLabel()}</button>
             <button data-act="hauptmenue">Hauptmenü</button>
           </div>
           <p class="muted">Die Partie wird nach jeder Aktion automatisch gespeichert.</p>
         </section>`;
     }
     case 'markt': {
-      const market = G.GOODS.map(
-        (g) => `<div class="row">
-          <span>${G.label(g)} <small>${fmt(s.prices[g])} G</small></span>
+      const lager = G.GOODS.map(
+        (g) => `<div class="res"><span>${G.label(g)}</span><b>${s.inv[g]}</b></div>`,
+      ).join('');
+      const market = G.GOODS.map((g) => {
+        const e = s.einkauf[g];
+        const avg =
+          e.menge > 0
+            ? `<br/><small>Ø Einkauf ${fmt(e.wert / e.menge)} G (davon ${e.menge} gekauft)</small>`
+            : '';
+        return `<div class="row">
+          <span>${G.label(g)} <b>${fmt(s.prices[g])} G</b> ${trendHtml(s.kursTrend[g])}${avg}</span>
           <span class="btns">
             <button data-act="buy" data-arg="${g}">Kaufen</button>
             <button data-act="sell" data-arg="${g}">Verkaufen</button>
           </span>
-        </div>`,
-      ).join('');
-      return `<section><h2>Markt</h2>${market}</section>`;
+        </div>`;
+      }).join('');
+      return `<section><h2>Lager</h2><div class="res-grid">${lager}</div></section>
+        <section><h2>Markt</h2><p class="muted">Kursentwicklung in der letzten Runde.</p>${market}</section>`;
     }
     case 'auftraege': {
       const contracts = s.contracts.length
@@ -480,6 +518,10 @@ app.addEventListener('click', (e) => {
       if (s.status === 'won') haptic('win');
       else if (s.status === 'lost') haptic('lose');
       else haptic('turn');
+      break;
+    case 'vibration':
+      vibrationUmschalten();
+      haptic('tap');
       break;
     case 'protokoll':
       sheet = { type: 'log' };

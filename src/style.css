@@ -58,6 +58,8 @@ header .stats, .muted, small { color: var(--muted); font-size: 0.85rem; }
 .start .opt { margin-top: 8px; }
 .opt .ico svg { width: 40px; height: 40px; flex: none; display: block; }
 .opt .txt { flex: 1; }
+.up { color: var(--good); }
+.down { color: var(--bad); }
 .ziel { margin: 12px 0 20px; }
 .ziel p { margin: 4px 0 0; }
 .howto { padding-left: 18px; margin: 4px 0 0; line-height: 1.5; }

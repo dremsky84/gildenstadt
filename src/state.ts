@@ -90,6 +90,8 @@ export interface GameState {
   ruf: number;
   inv: Inventory;
   prices: Record<Good, number>;
+  einkauf: Record<Good, { menge: number; wert: number }>;
+  kursTrend: Record<Good, number>;
   slots: (BuildingId | null)[];
   pop: number;
   zufriedenheit: number;
@@ -203,6 +205,12 @@ export function slotCap(s: GameState): number {
   return maxWert(s, 'raster', CFG.slots);
 }
 
+export const leererEinkauf = (): Record<Good, { menge: number; wert: number }> =>
+  Object.fromEntries(GOODS.map((g) => [g, { menge: 0, wert: 0 }])) as Record<Good, { menge: number; wert: number }>;
+
+export const leereTrends = (): Record<Good, number> =>
+  Object.fromEntries(GOODS.map((g) => [g, 0])) as Record<Good, number>;
+
 export function createGame(seed = 1, schwierigkeit: Schwierigkeit = 'geselle'): GameState {
   const s: GameState = {
     seed,
@@ -211,6 +219,8 @@ export function createGame(seed = 1, schwierigkeit: Schwierigkeit = 'geselle'): 
     ruf: 0,
     inv: { holz: 10, erz: 0, getreide: 5, werkzeug: 0, brot: 2, tuch: 2 },
     prices: Object.fromEntries(GOODS.map((g) => [g, GOODDEF[g].base])) as Record<Good, number>,
+    einkauf: leererEinkauf(),
+    kursTrend: leereTrends(),
     slots: Array(CFG.slots).fill(null),
     pop: CFG.startPop,
     zufriedenheit: CFG.zufriedenheit.start,
@@ -247,11 +257,30 @@ function missing(s: GameState, cost: Partial<Record<Good | 'gold', number>>): st
   return null;
 }
 
+// Hält den Einkaufsbestand zum Lager passend. Verbrauch und Verkauf senken Menge und Wert
+// im gleichen Verhältnis, der Durchschnittspreis bleibt also gleich. Selbst produzierte
+// Waren erhöhen nur das Lager, nicht den Einkauf.
+export function abgleichen(s: GameState): void {
+  for (const g of GOODS) {
+    const e = s.einkauf[g];
+    if (e.menge > s.inv[g]) {
+      const avg = e.menge > 0 ? e.wert / e.menge : 0;
+      e.menge = Math.max(0, s.inv[g]);
+      e.wert = avg * e.menge;
+    }
+  }
+}
+
 function pay(s: GameState, cost: Partial<Record<Good | 'gold', number>>) {
   for (const [k, n] of Object.entries(cost) as [Good | 'gold', number][]) {
     if (k === 'gold') s.gold -= n;
     else s.inv[k] -= n;
   }
+}
+
+// Ob der Spieler sich ein Gebäude jetzt leisten kann (Kosten und Forschung).
+export function kannBauen(s: GameState, id: BuildingId): boolean {
+  return freigegeben(s, id) && missing(s, DEF(id).cost) === null;
 }
 
 export function build(s: GameState, slot: number, id: BuildingId): string | null {
@@ -262,6 +291,7 @@ export function build(s: GameState, slot: number, id: BuildingId): string | null
   const err = missing(s, d.cost);
   if (err) return err;
   pay(s, d.cost);
+  abgleichen(s);
   s.slots[slot] = id;
   s.log.push(`${d.label} gebaut.`);
   return null;
@@ -273,6 +303,8 @@ export function buy(s: GameState, good: Good): string | null {
   if (s.gold < p) return 'Nicht genug Gold.';
   s.gold -= p;
   s.inv[good] += 1;
+  s.einkauf[good].menge += 1;
+  s.einkauf[good].wert += p;
   s.prices[good] *= 1.05;
   return null;
 }
@@ -281,6 +313,7 @@ export function sell(s: GameState, good: Good): string | null {
   if (s.status !== 'playing') return 'Das Spiel ist beendet.';
   if (s.inv[good] < 1) return `Keine ${label(good)} zum Verkaufen.`;
   s.inv[good] -= 1;
+  abgleichen(s);
   const quote = maxWert(s, 'verkaufsquote', 0.8);
   s.gold += Math.max(1, Math.floor(s.prices[good] * quote));
   if (good !== s.monopolGut) s.prices[good] = Math.max(1, s.prices[good] * 0.95);
@@ -294,6 +327,7 @@ export function fulfill(s: GameState, id: number): string | null {
   if (s.inv[c.good] < c.amount) return `Dir fehlen ${c.amount - s.inv[c.good]} ${label(c.good)}.`;
   const gold = Math.round(c.gold * (1 + summe(s, 'auftragsbonus')));
   s.inv[c.good] -= c.amount;
+  abgleichen(s);
   s.gold += gold;
   s.ruf += c.ruf;
   s.contracts = s.contracts.filter((x) => x.id !== id);
@@ -349,6 +383,7 @@ export function endTurn(s: GameState): void {
   if (s.status !== 'playing') return;
 
   const zufBefore = s.zufriedenheit;
+  const kursVorher = { ...s.prices };
   const popBefore = s.pop;
   const produced: Partial<Record<Good, number>> = {};
   const consumed: Partial<Record<Good, number>> = {};
@@ -466,6 +501,10 @@ export function endTurn(s: GameState): void {
   // 6. Neue Aufträge
   while (s.contracts.length >= maxWert(s, 'auftragsslots', 3)) s.contracts.shift();
   addContract(s);
+
+  // Kursentwicklung dieser Runde (nur die Marktbewegung, nicht die Käufe des Spielers)
+  for (const g of GOODS) s.kursTrend[g] = s.prices[g] / kursVorher[g] - 1;
+  abgleichen(s);
 
   // 7. Rundenbericht und nächste Runde
   s.report = {

@@ -1,4 +1,4 @@
-import type { GameState } from './state';
+import { type GameState, leererEinkauf, leereTrends } from './state';
 
 export const SAVE_KEY = 'gildenstadt-spielstand-v1';
 
@@ -26,7 +26,12 @@ export function deserialize(text: string): GameState | null {
     ) {
       return null;
     }
-    return o as GameState;
+    // Ältere Spielstände haben die Felder für Einkauf und Kurse noch nicht.
+    return {
+      ...o,
+      einkauf: o.einkauf ?? leererEinkauf(),
+      kursTrend: o.kursTrend ?? leereTrends(),
+    } as GameState;
   } catch {
     return null;
   }
