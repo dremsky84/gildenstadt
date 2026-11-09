@@ -25,11 +25,16 @@ let phase: 'start' | 'spiel' = 'start';
 let s: G.GameState = G.createGame(Math.floor(Math.random() * 1_000_000));
 let tab: Tab = 'stadt';
 let message = '';
+// Developer Mode: öffnet sich nach fünf schnellen Taps auf den Goldbetrag.
+let devAktiv = false;
+let goldTaps = 0;
+let goldTapZeit = 0;
 let sheet:
   | { type: 'build'; slot: number }
   | { type: 'info'; slot: number }
   | { type: 'report' }
   | { type: 'log' }
+  | { type: 'dev' }
   | null = null;
 
 // --- Speicherung im Browser ---
@@ -175,6 +180,7 @@ function sheetHtml(): string {
   const sh = sheet;
   if (sh.type === 'report') return reportHtml();
   if (sh.type === 'log') return logHtml();
+  if (sh.type === 'dev') return devHtml();
   if (sh.type === 'build') {
     const opts = G.BUILDINGS.filter((id) => G.freigegeben(s, id))
       .map((id) => {
@@ -230,6 +236,24 @@ function reportHtml(): string {
     <p>Einwohner: ${r.popNow} (${sign(r.popDelta)})</p>
     ${r.rival ? `<p class="muted">${r.rival}</p>` : ''}
     <button data-act="close">Weiter</button>
+  </div></div>`;
+}
+
+function devHtml(): string {
+  const btn = (act: string, text: string) => `<button data-act="${act}">${text}</button>`;
+  return `<div class="overlay"><div class="sheet">
+    <h3>Developer Mode</h3>
+    <p class="muted">Nur zum Testen. Die Aktionen verändern die laufende Partie.</p>
+    <div class="dev-btns">
+      ${btn('devgold', '+500 Gold')}
+      ${btn('devvorrat', '+20 jede Ware')}
+      ${btn('devwissen', '+10 Wissen')}
+      ${btn('devforschung', 'Alles erforschen')}
+      ${btn('devruf', '+5 Ruf')}
+      ${btn('devrunden', '5 Runden weiter')}
+      ${btn('devsieg', 'Sieg auslösen')}
+    </div>
+    <button class="ghost" data-act="close">Schließen</button>
   </div></div>`;
 }
 
@@ -401,7 +425,7 @@ function render() {
       <div class="top">
         <span>Runde ${Math.min(s.turn, G.CFG.maxTurns)}/${G.CFG.maxTurns}
           <button class="log-btn" data-act="protokoll" aria-label="Protokoll">📝</button></span>
-        <span>Gold ${fmt(s.gold)}</span>
+        <span class="gold" data-act="gold">Gold ${fmt(s.gold)}${devAktiv ? '<small>DEV</small>' : ''}</span>
       </div>
       <div class="rank">${rang.name} · Ruf ${s.ruf}/${G.CFG.winRuf}${
         next ? ` · nächster Rang bei ${next.ruf}` : ''
@@ -431,6 +455,7 @@ app.addEventListener('click', (e) => {
   const act = el.dataset.act!;
   const arg = el.dataset.arg ?? '';
   message = '';
+  if (act !== 'gold') goldTaps = 0;
 
   switch (act) {
     case 'start':
@@ -522,6 +547,46 @@ app.addEventListener('click', (e) => {
     case 'vibration':
       vibrationUmschalten();
       haptic('tap');
+      break;
+    case 'gold': {
+      const jetzt = Date.now();
+      goldTaps = jetzt - goldTapZeit > 2000 ? 1 : goldTaps + 1;
+      goldTapZeit = jetzt;
+      if (goldTaps >= 5) {
+        goldTaps = 0;
+        devAktiv = true;
+        sheet = { type: 'dev' };
+        haptic('ok');
+      }
+      break;
+    }
+    case 'devgold':
+      s.gold += 500;
+      break;
+    case 'devvorrat':
+      for (const g of G.GOODS) s.inv[g] += 20;
+      break;
+    case 'devwissen':
+      s.wissen += 10;
+      break;
+    case 'devforschung':
+      for (const z of G.ZWEIGE) s.forschung[z.id] = z.stufen.length;
+      while (s.slots.length < G.slotCap(s)) s.slots.push(null);
+      break;
+    case 'devruf':
+      s.ruf += 5;
+      if (s.ruf >= G.CFG.winRuf && s.status === 'playing') {
+        s.status = 'won';
+        s.log.push('Gildenvorsteher (Dev).');
+      }
+      break;
+    case 'devrunden':
+      for (let i = 0; i < 5 && s.status === 'playing'; i++) G.endTurn(s);
+      sheet = s.status === 'playing' && s.report ? { type: 'report' } : null;
+      break;
+    case 'devsieg':
+      s.status = 'won';
+      s.log.push('Sieg (Dev).');
       break;
     case 'protokoll':
       sheet = { type: 'log' };

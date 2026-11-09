@@ -55,7 +55,12 @@ header .stats, .muted, small { color: var(--muted); font-size: 0.85rem; }
 
 .start { padding: 48px 4px 24px; }
 .start h1 { font-size: 2rem; margin: 0 0 8px; color: var(--accent); }
-.start .opt { margin-top: 8px; }
+.start .opt { margin-top: 8px; gap: 12px; }
+.start .opt small { flex: 1; text-align: right; }
+.dev-btns { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.dev-btns button { flex: 1 1 45%; }
+.gold { cursor: pointer; user-select: none; }
+.gold small { font-size: 0.7rem; color: var(--bad); margin-left: 4px; }
 .opt .ico svg { width: 40px; height: 40px; flex: none; display: block; }
 .opt .txt { flex: 1; }
 .up { color: var(--good); }
