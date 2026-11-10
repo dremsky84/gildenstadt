@@ -160,7 +160,10 @@ button.end {
 }
 .slot { width: 100%; min-height: 64px; font-size: 0.9rem; }
 .slot.empty { color: var(--muted); border-style: dashed; }
-.slot.built { background: var(--panel); border-color: var(--accent); }
+.slot.built { background: var(--panel); border-color: var(--accent); display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; }
+.slot-ico svg { width: 32px; height: 32px; display: block; }
+.slot-name { font-size: 0.85rem; font-weight: 600; }
+.slot-eff { font-size: 0.72rem; color: var(--muted); text-align: center; line-height: 1.2; }
 
 .res-grid {
   display: grid;

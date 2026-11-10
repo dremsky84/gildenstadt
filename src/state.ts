@@ -153,6 +153,11 @@ export function rangBonus(ruf: number): number {
 export const verlaufStart = (prices: Record<Good, number>): Record<Good, number[]> =>
   Object.fromEntries(GOODS.map((g) => [g, [Math.round(prices[g])]])) as Record<Good, number[]>;
 
+// Protokolleintrag mit der Runde, in der das Ereignis passiert ist.
+export function logEintrag(s: GameState, text: string): void {
+  s.log.push(`Runde ${s.turn}: ${text}`);
+}
+
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
 // Deterministische Zufallszahlen (mulberry32), damit Tests reproduzierbar sind.
@@ -271,7 +276,7 @@ export function createGame(seed = 1, schwierigkeit: Schwierigkeit = 'geselle', l
     [ids[i], ids[j]] = [ids[j], ids[i]];
   }
   s.rivals = ids.slice(0, 2).map((id) => ({ id, ruf: 0 }));
-  s.log.push(`Gegen dich treten an: ${s.rivals.map((r) => rivalLabel(r.id)).join(' und ')}.`);
+  logEintrag(s, `Gegen dich treten an: ${s.rivals.map((r) => rivalLabel(r.id)).join(' und ')}.`);
   return s;
 }
 
@@ -319,7 +324,7 @@ export function build(s: GameState, slot: number, id: BuildingId): string | null
   pay(s, d.cost);
   abgleichen(s);
   s.slots[slot] = id;
-  s.log.push(`${d.label} gebaut.`);
+  logEintrag(s, `${d.label} gebaut.`);
   return null;
 }
 
@@ -357,10 +362,10 @@ export function fulfill(s: GameState, id: number): string | null {
   s.gold += gold;
   s.ruf += c.ruf;
   s.contracts = s.contracts.filter((x) => x.id !== id);
-  s.log.push(`Auftrag erfüllt: +${gold} Gold, +${c.ruf} Ruf.`);
+  logEintrag(s, `Auftrag erfüllt: +${gold} Gold, +${c.ruf} Ruf.`);
   if (s.ruf >= s.ziel) {
     s.status = 'won';
-    s.log.push('Du bist Gildenvorsteher!');
+    logEintrag(s, 'Du bist Gildenvorsteher!');
   }
   return null;
 }
@@ -374,7 +379,7 @@ export function forschen(s: GameState, zweig: Zweig): string | null {
   if (s.wissen < st.kosten) return `Dir fehlen ${st.kosten - s.wissen} Wissen.`;
   s.wissen -= st.kosten;
   s.forschung[zweig] = lvl + 1;
-  s.log.push(`Erforscht: ${st.name} (${z.label}).`);
+  logEintrag(s, `Erforscht: ${st.name} (${z.label}).`);
   while (s.slots.length < slotCap(s)) s.slots.push(null);
   return null;
 }
@@ -383,7 +388,7 @@ export function monopolWaehlen(s: GameState, good: Good): string | null {
   if (!hatMonopol(s)) return 'Das Handelsmonopol ist noch nicht erforscht.';
   if (s.monopolGut) return 'Das Monopolgut ist schon gewählt.';
   s.monopolGut = good;
-  s.log.push(`Handelsmonopol auf ${label(good)} gesetzt.`);
+  logEintrag(s, `Handelsmonopol auf ${label(good)} gesetzt.`);
   return null;
 }
 
@@ -393,14 +398,14 @@ export function buendnisSchliessen(s: GameState, rival: RivalId): string | null 
   if (!s.rivals.some((r) => r.id === rival)) return 'Diese Gilde spielt nicht mit.';
   if (!RIVALEN[rival].buendnisMoeglich) return `${rivalLabel(rival)} lehnt Bündnisse ab.`;
   s.buendnis = { rival, verbleibend: BUENDNIS.dauer };
-  s.log.push(`Bündnis mit ${rivalLabel(rival)} für ${BUENDNIS.dauer} Runden geschlossen.`);
+  logEintrag(s, `Bündnis mit ${rivalLabel(rival)} für ${BUENDNIS.dauer} Runden geschlossen.`);
   return null;
 }
 
 export function buendnisBrechen(s: GameState): string | null {
   if (!s.buendnis) return 'Kein Bündnis aktiv.';
   s.ruf = Math.max(0, s.ruf - BUENDNIS.bruchRuf);
-  s.log.push(`Bündnis gebrochen: −${BUENDNIS.bruchRuf} Ruf.`);
+  logEintrag(s, `Bündnis gebrochen: −${BUENDNIS.bruchRuf} Ruf.`);
   s.buendnis = null;
   return null;
 }
@@ -431,12 +436,12 @@ export function endTurn(s: GameState): void {
     if (!ok) {
       s.ruf = Math.max(0, s.ruf - BUENDNIS.bruchRuf);
       s.buendnis = null;
-      s.log.push(`Bündnis gebrochen, weil die Gegenleistung fehlte: −${BUENDNIS.bruchRuf} Ruf.`);
+      logEintrag(s, `Bündnis gebrochen, weil die Gegenleistung fehlte: −${BUENDNIS.bruchRuf} Ruf.`);
     } else {
       b.verbleibend -= 1;
       if (b.verbleibend <= 0) {
         s.buendnis = null;
-        s.log.push('Bündnis ausgelaufen.');
+        logEintrag(s, 'Bündnis ausgelaufen.');
       }
     }
   }
@@ -469,7 +474,7 @@ export function endTurn(s: GameState): void {
       stalled++;
     }
   }
-  if (stalled) s.log.push(`${stalled} Gebäude standen still (fehlende Rohstoffe).`);
+  if (stalled) logEintrag(s, `${stalled} Gebäude standen still (fehlende Rohstoffe).`);
 
   // 2. Verbrauch der Bevölkerung und Zufriedenheit
   const Z = CFG.zufriedenheit;
@@ -526,12 +531,12 @@ export function endTurn(s: GameState): void {
     }
     if (r.ruf >= s.ziel && s.status === 'playing') {
       s.status = 'lost';
-      s.log.push(`${c.label} hat ${s.ziel} Ruf erreicht. Die Partie ist verloren.`);
+      logEintrag(s, `${c.label} hat ${s.ziel} Ruf erreicht. Die Partie ist verloren.`);
     }
   }
   if (rivalMeldungen.length) {
     rival = rivalMeldungen.join(' ');
-    s.log.push(rival);
+    logEintrag(s, rival);
   }
 
   // 6. Neue Aufträge
@@ -563,10 +568,10 @@ export function endTurn(s: GameState): void {
     const best = Math.max(0, ...s.rivals.map((r) => r.ruf));
     if (s.ruf >= best) {
       s.status = 'won';
-      s.log.push('Zeit abgelaufen: Du hast den meisten Ruf.');
+      s.log.push(`Runde ${s.maxRunden}: Zeit abgelaufen: Du hast den meisten Ruf.`);
     } else {
       s.status = 'lost';
-      s.log.push('Zeit abgelaufen: Eine Rivalengilde hat mehr Ruf.');
+      s.log.push(`Runde ${s.maxRunden}: Zeit abgelaufen: Eine Rivalengilde hat mehr Ruf.`);
     }
   }
 }

@@ -441,8 +441,17 @@ function tabContent(): string {
     case 'stadt': {
       const slots = s.slots
         .map((id, i) => {
-          const name = id ? G.DEF(id).label : '+';
-          return `<button class="slot ${id ? 'built' : 'empty'}" data-act="slot" data-arg="${i}">${name}</button>`;
+          if (!id) return `<button class="slot empty" data-act="slot" data-arg="${i}">+</button>`;
+          const d = G.DEF(id);
+          const verbrauch = Object.entries(d.in).map(([g, n]) => `-${n} ${G.label(g as Good)}`);
+          const ertrag = Object.entries(d.out).map(([g, n]) => `+${n} ${G.label(g as Good)}`);
+          if (d.wissen) ertrag.push(`+${d.wissen} Wissen`);
+          const effekte = [...verbrauch, ...ertrag];
+          return `<button class="slot built" data-act="slot" data-arg="${i}">
+            <span class="slot-ico">${ICONS[id]}</span>
+            <span class="slot-name">${d.label}</span>
+            ${effekte.length ? `<small class="slot-eff">(${effekte.join('/')})</small>` : ''}
+          </button>`;
         })
         .join('');
       const goods = G.GOODS.map(lagerKachel).join('');
@@ -692,7 +701,7 @@ app.addEventListener('click', (e) => {
       s.ruf += 5;
       if (s.ruf >= s.ziel && s.status === 'playing') {
         s.status = 'won';
-        s.log.push('Gildenvorsteher (Dev).');
+        G.logEintrag(s, 'Gildenvorsteher (Dev).');
       }
       break;
     case 'devrunden':
@@ -701,7 +710,7 @@ app.addEventListener('click', (e) => {
       break;
     case 'devsieg':
       s.status = 'won';
-      s.log.push('Sieg (Dev).');
+      G.logEintrag(s, 'Sieg (Dev).');
       break;
     case 'protokoll':
       sheet = { type: 'log' };
