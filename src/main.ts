@@ -3,6 +3,7 @@ import * as G from './state';
 import type { BuildingId, Good, RivalId, Schwierigkeit, Zweig } from './state';
 import { serialize, deserialize, SAVE_KEY } from './save';
 import { ICONS } from './icons';
+import { entsperren, setMusik, setTon, sfx, type Klang } from './audio';
 
 type Tab = 'stadt' | 'markt' | 'auftraege' | 'forschung';
 const TABS: { id: Tab; label: string }[] = [
@@ -25,6 +26,7 @@ let phase: 'start' | 'spiel' = 'start';
 let s: G.GameState = G.createGame(Math.floor(Math.random() * 1_000_000));
 let tab: Tab = 'stadt';
 let message = '';
+let laenge: G.Laenge = 'kurz';
 // Developer Mode: öffnet sich nach fünf schnellen Taps auf den Goldbetrag.
 let devAktiv = false;
 let goldTaps = 0;
@@ -35,6 +37,8 @@ let sheet:
   | { type: 'report' }
   | { type: 'log' }
   | { type: 'dev' }
+  | { type: 'rang'; name: string; bonus: number }
+  | { type: 'kurs'; good: Good }
   | null = null;
 
 // --- Speicherung im Browser ---
@@ -47,15 +51,25 @@ function storage(): Storage | null {
   }
 }
 
-function ladeSpielstand(): G.GameState | null {
-  const st = storage();
-  if (!st) return null;
+function laden(key: string): string | null {
   try {
-    const text = st.getItem(SAVE_KEY);
-    return text ? deserialize(text) : null;
+    return storage()?.getItem(key) ?? null;
   } catch {
     return null;
   }
+}
+
+function speichern(key: string, wert: string) {
+  try {
+    storage()?.setItem(key, wert);
+  } catch {
+    // Ohne Speicher gilt die Einstellung nur bis zum Neuladen.
+  }
+}
+
+function ladeSpielstand(): G.GameState | null {
+  const text = laden(SAVE_KEY);
+  return text ? deserialize(text) : null;
 }
 
 // Gibt false zurück, wenn der Browser das Speichern verweigert.
@@ -85,11 +99,11 @@ function automatischSichern() {
   else loescheSpielstand();
 }
 
-// --- Haptik ---
+// --- Haptik und Ton ---
 
 // Haptik: kurze Vibrationsmuster. Die Vibrations-API gibt es nur in Android-Chrome.
 // Auf iPhones bleibt das Feedback stumm, die Bedienung funktioniert trotzdem.
-type Haptic = 'tap' | 'ok' | 'error' | 'turn' | 'win' | 'lose';
+type Haptic = Klang;
 // Dauer in ms. Sehr kurze Impulse (unter ~15 ms) werden auf vielen Geräten nicht gespürt.
 const PATTERNS: Record<Haptic, number | number[]> = {
   tap: 25,
@@ -98,30 +112,41 @@ const PATTERNS: Record<Haptic, number | number[]> = {
   turn: 50,
   win: [60, 80, 60, 80, 160],
   lose: [400],
+  rang: [40, 60, 40, 60, 120],
 };
+
 const VIBRATION_KEY = 'gildenstadt-vibration';
-let vibrationAn = (() => {
-  try {
-    return storage()?.getItem(VIBRATION_KEY) !== '0';
-  } catch {
-    return true;
-  }
-})();
+let vibrationAn = laden(VIBRATION_KEY) !== '0';
+const TON_KEY = 'gildenstadt-ton';
+let tonAn = laden(TON_KEY) !== '0';
+const MUSIK_KEY = 'gildenstadt-musik';
+let musikAn = laden(MUSIK_KEY) !== '0';
 
 function haptic(kind: Haptic) {
   if (vibrationAn && 'vibrate' in navigator) navigator.vibrate(PATTERNS[kind]);
+  sfx(kind);
 }
 
 function vibrationUmschalten() {
   vibrationAn = !vibrationAn;
-  try {
-    storage()?.setItem(VIBRATION_KEY, vibrationAn ? '1' : '0');
-  } catch {
-    // Ohne Speicher gilt die Einstellung nur bis zum Neuladen.
-  }
+  speichern(VIBRATION_KEY, vibrationAn ? '1' : '0');
+}
+
+function tonUmschalten() {
+  tonAn = !tonAn;
+  setTon(tonAn);
+  speichern(TON_KEY, tonAn ? '1' : '0');
+}
+
+function musikUmschalten() {
+  musikAn = !musikAn;
+  setMusik(musikAn);
+  speichern(MUSIK_KEY, musikAn ? '1' : '0');
 }
 
 const vibrationLabel = () => `Vibration: ${vibrationAn ? 'an' : 'aus'}`;
+const tonLabel = () => `Sound: ${tonAn ? 'an' : 'aus'}`;
+const musikLabel = () => `Musik: ${musikAn ? 'an' : 'aus'}`;
 
 function result(err: string | null) {
   if (err) {
@@ -134,11 +159,23 @@ function result(err: string | null) {
 
 const fmt = (n: number) => Math.round(n).toString();
 
-// Kursentwicklung der letzten Runde als farbige Anzeige.
+// Kursentwicklung als farbige Anzeige.
 function trendHtml(t: number): string {
   const p = Math.round(t * 100);
   if (p === 0) return '<span class="muted">→ 0 %</span>';
   return p > 0 ? `<span class="up">▲ +${p} %</span>` : `<span class="down">▼ ${p} %</span>`;
+}
+
+// Lagerkachel mit Veränderung zur Vorrunde.
+function lagerKachel(g: Good): string {
+  const d = s.lagerTrend[g];
+  const t =
+    d > 0
+      ? `<small class="up">▲ +${d}</small>`
+      : d < 0
+        ? `<small class="down">▼ ${d}</small>`
+        : '<small class="muted">→ 0</small>';
+  return `<div class="res"><span>${G.label(g)}</span><b>${s.inv[g]}</b>${t}</div>`;
 }
 
 function startHtml(): string {
@@ -151,12 +188,14 @@ function startHtml(): string {
       <span>${SCHW_LABEL[k]}</span><small>${SCHW_TEXT[k]}</small></button>`,
   ).join('');
   const hinweis = weiter ? '<p class="muted">Ein neues Spiel ersetzt den gespeicherten Stand.</p>' : '';
+  const p = G.PARTIEN[laenge];
+  const lang = (l: G.Laenge) => `class="chip ${laenge === l ? 'sel' : ''}" data-act="laenge" data-arg="${l}"`;
   return `<div class="start">
     <h1>Gildenstadt</h1>
     <p class="muted">Baue eine Handelsgilde auf, forsche, handle und erreiche den Gildenrang, bevor die Rivalen dich überholen.</p>
     <section class="ziel">
       <h2>Ziel</h2>
-      <p>Erreiche 40 Ruf, bevor ein Rivale es tut. Nach 20 Runden gewinnt, wer den meisten Ruf hat.</p>
+      <p>Erreiche ${p.ziel} Ruf, bevor ein Rivale es tut. Nach ${p.runden} Runden gewinnt, wer den meisten Ruf hat.</p>
       <h2>So spielst du</h2>
       <ul class="howto">
         <li><b>Stadt:</b> Baue Gebäude auf freie Plätze. Sie produzieren Waren.</li>
@@ -164,14 +203,23 @@ function startHtml(): string {
         <li><b>Aufträge:</b> Liefere Waren für Gold und Ruf.</li>
         <li><b>Forschung:</b> Wissen aus der Schreibstube schaltet neue Gebäude und Vorteile frei.</li>
         <li><b>Bündnisse:</b> Schließe Verträge mit Rivalen. Ein Bruch kostet Ruf.</li>
-        <li><b>Runde beenden:</b> Produktion, Versorgung und Rivalen ziehen weiter.</li>
+        <li><b>Runde beenden:</b> Produktion, Steuern, Versorgung und Rivalen ziehen weiter.</li>
       </ul>
     </section>
     ${weiterKnopf}
     <h2>Neues Spiel</h2>
+    <p class="muted">Länge</p>
+    <div class="chips">
+      <button ${lang('kurz')}>Kurz · ${G.PARTIEN.kurz.runden} Runden</button>
+      <button ${lang('lang')}>Lang · ${G.PARTIEN.lang.runden} Runden</button>
+    </div>
     ${hinweis}
     ${opts}
-    <button class="ghost" data-act="vibration">${vibrationLabel()}</button>
+    <div class="einstellungen">
+      <button class="ghost" data-act="vibration">${vibrationLabel()}</button>
+      <button class="ghost" data-act="ton">${tonLabel()}</button>
+      <button class="ghost" data-act="musik">${musikLabel()}</button>
+    </div>
   </div>`;
 }
 
@@ -181,6 +229,8 @@ function sheetHtml(): string {
   if (sh.type === 'report') return reportHtml();
   if (sh.type === 'log') return logHtml();
   if (sh.type === 'dev') return devHtml();
+  if (sh.type === 'rang') return rangHtml(sh.name, sh.bonus);
+  if (sh.type === 'kurs') return kursHtml(sh.good);
   if (sh.type === 'build') {
     const opts = G.BUILDINGS.filter((id) => G.freigegeben(s, id))
       .map((id) => {
@@ -232,10 +282,56 @@ function reportHtml(): string {
     <p>Produziert: ${listGoods(r.produced)}</p>
     <p>Verbraucht: ${listGoods(r.consumed)}</p>
     ${r.stalled ? `<p class="warn">${r.stalled} Gebäude standen still (fehlende Rohstoffe).</p>` : ''}
+    <p>Wissen: +${r.wissen ?? 0}</p>
+    <p>Steuern: +${r.steuer ?? 0} Gold</p>
     <p>Zufriedenheit: ${r.zufNow} (${sign(r.zufDelta)})</p>
     <p>Einwohner: ${r.popNow} (${sign(r.popDelta)})</p>
     ${r.rival ? `<p class="muted">${r.rival}</p>` : ''}
     <button data-act="close">Weiter</button>
+  </div></div>`;
+}
+
+function rangHtml(name: string, bonus: number): string {
+  const p = Math.round(bonus * 100);
+  return `<div class="overlay"><div class="sheet">
+    <h3>Neuer Rang: ${name}</h3>
+    <p>Du bist zum ${name} aufgestiegen.</p>
+    <p>${p > 0 ? `Vorteil: +${p} % Gold bei jedem Auftrag.` : 'Dieser Rang bringt noch keinen Bonus.'}</p>
+    <button data-act="close">Weiter</button>
+  </div></div>`;
+}
+
+// Kursverlauf der letzten Runden als Liniendiagramm.
+function kursHtml(g: Good): string {
+  const werte = s.kursVerlauf[g];
+  const min = Math.min(...werte);
+  const max = Math.max(...werte);
+  const W = 300;
+  const H = 150;
+  const P = 14;
+  const spanne = max - min || 1;
+  const punkte = werte.map((v, i) => {
+    const x = werte.length > 1 ? P + (i * (W - 2 * P)) / (werte.length - 1) : W / 2;
+    const y = H - P - ((v - min) / spanne) * (H - 2 * P);
+    return { x: x.toFixed(1), y: y.toFixed(1) };
+  });
+  const linie = punkte.map((p) => `${p.x},${p.y}`).join(' ');
+  const letzter = punkte[punkte.length - 1];
+  const erste = werte[0];
+  const letzte = werte[werte.length - 1];
+  return `<div class="overlay"><div class="sheet">
+    <h3>${G.label(g)}</h3>
+    <p>Aktuell <b>${letzte} G</b> · ${trendHtml(erste > 0 ? letzte / erste - 1 : 0)} seit ${werte.length - 1} Runden</p>
+    <svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="Kursverlauf von ${G.label(g)}">
+      <line x1="${P}" y1="${H - P}" x2="${W - P}" y2="${H - P}" stroke="#3d3a32"/>
+      <polyline points="${linie}" fill="none" stroke="#c9a24a" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+      ${punkte.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="2.5" fill="#c9a24a"/>`).join('')}
+      <circle cx="${letzter.x}" cy="${letzter.y}" r="5" fill="#f1ead8"/>
+      <text x="${P}" y="${P}" fill="#9a927e" font-size="11">${max} G</text>
+      <text x="${P}" y="${H - 2}" fill="#9a927e" font-size="11">${min} G</text>
+    </svg>
+    <p class="muted">Die letzten ${werte.length} Kurswerte, jeweils am Rundenende. Tiefster ${min} G, höchster ${max} G.</p>
+    <button class="ghost" data-act="close">Schließen</button>
   </div></div>`;
 }
 
@@ -276,7 +372,7 @@ function endHtml(): string {
     <h3>${won ? 'Gildenvorsteher!' : 'Spiel vorbei'}</h3>
     <p>${won
       ? `Du hast in ${s.turn - 1} Runden ${s.ruf} Ruf erreicht.`
-      : `Du hast ${s.ruf} von ${G.CFG.winRuf} Ruf erreicht.`}</p>
+      : `Du hast ${s.ruf} von ${s.ziel} Ruf erreicht.`}</p>
     <button data-act="neu">Neues Spiel</button>
   </div></div>`;
 }
@@ -349,25 +445,25 @@ function tabContent(): string {
           return `<button class="slot ${id ? 'built' : 'empty'}" data-act="slot" data-arg="${i}">${name}</button>`;
         })
         .join('');
-      const goods = G.GOODS.map(
-        (g) => `<div class="res"><span>${G.label(g)}</span><b>${s.inv[g]}</b></div>`,
-      ).join('');
+      const goods = G.GOODS.map(lagerKachel).join('');
       return `
         <section><h2>Stadt</h2><div class="slots">${slots}</div></section>
-        <section><h2>Lager</h2><div class="res-grid">${goods}</div></section>
+        <section><h2>Lager</h2><p class="muted">Pfeil: Veränderung zur Vorrunde.</p><div class="res-grid">${goods}</div></section>
         <section><h2>Spiel</h2>
-          <div class="btns">
+          <div class="btns wrap">
             <button data-act="speichern">Speichern</button>
-            <button data-act="vibration">${vibrationLabel()}</button>
             <button data-act="hauptmenue">Hauptmenü</button>
+          </div>
+          <div class="btns wrap">
+            <button data-act="vibration">${vibrationLabel()}</button>
+            <button data-act="ton">${tonLabel()}</button>
+            <button data-act="musik">${musikLabel()}</button>
           </div>
           <p class="muted">Die Partie wird nach jeder Aktion automatisch gespeichert.</p>
         </section>`;
     }
     case 'markt': {
-      const lager = G.GOODS.map(
-        (g) => `<div class="res"><span>${G.label(g)}</span><b>${s.inv[g]}</b></div>`,
-      ).join('');
+      const lager = G.GOODS.map(lagerKachel).join('');
       const market = G.GOODS.map((g) => {
         const e = s.einkauf[g];
         const avg =
@@ -375,15 +471,15 @@ function tabContent(): string {
             ? `<br/><small>Ø Einkauf ${fmt(e.wert / e.menge)} G (davon ${e.menge} gekauft)</small>`
             : '';
         return `<div class="row">
-          <span>${G.label(g)} <b>${fmt(s.prices[g])} G</b> ${trendHtml(s.kursTrend[g])}${avg}</span>
+          <span class="kurs-link" data-act="kurs" data-arg="${g}">${G.label(g)} <b>${fmt(s.prices[g])} G</b> ${trendHtml(s.kursTrend[g])} <small>›</small>${avg}</span>
           <span class="btns">
             <button data-act="buy" data-arg="${g}">Kaufen</button>
             <button data-act="sell" data-arg="${g}">Verkaufen</button>
           </span>
         </div>`;
       }).join('');
-      return `<section><h2>Lager</h2><div class="res-grid">${lager}</div></section>
-        <section><h2>Markt</h2><p class="muted">Kursentwicklung in der letzten Runde.</p>${market}</section>`;
+      return `<section><h2>Lager</h2><p class="muted">Pfeil: Veränderung zur Vorrunde.</p><div class="res-grid">${lager}</div></section>
+        <section><h2>Markt</h2><p class="muted">Kursentwicklung in der letzten Runde. Tippe auf eine Ware für den Kursverlauf.</p>${market}</section>`;
     }
     case 'auftraege': {
       const contracts = s.contracts.length
@@ -423,11 +519,11 @@ function render() {
   app.innerHTML = `
     <header>
       <div class="top">
-        <span>Runde ${Math.min(s.turn, G.CFG.maxTurns)}/${G.CFG.maxTurns}
+        <span>Runde ${Math.min(s.turn, s.maxRunden)}/${s.maxRunden}
           <button class="log-btn" data-act="protokoll" aria-label="Protokoll">📝</button></span>
         <span class="gold" data-act="gold">Gold ${fmt(s.gold)}${devAktiv ? '<small>DEV</small>' : ''}</span>
       </div>
-      <div class="rank">${rang.name} · Ruf ${s.ruf}/${G.CFG.winRuf}${
+      <div class="rank">${rang.name} · Ruf ${s.ruf}/${s.ziel}${
         next ? ` · nächster Rang bei ${next.ruf}` : ''
       }</div>
       <div class="stats">Einwohner ${s.pop} · Zufriedenheit ${fmt(s.zufriedenheit)} · Wissen ${s.wissen}</div>
@@ -452,18 +548,25 @@ function render() {
 app.addEventListener('click', (e) => {
   const el = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
   if (!el) return;
+  // Erste Eingabe entsperrt den Ton und startet die Musik.
+  entsperren();
   const act = el.dataset.act!;
   const arg = el.dataset.arg ?? '';
   message = '';
   if (act !== 'gold') goldTaps = 0;
+  const rangVorher = G.RANG.indexOf(G.rangOf(s.ruf));
 
   switch (act) {
     case 'start':
-      s = G.createGame(Math.floor(Math.random() * 1_000_000), arg as Schwierigkeit);
+      s = G.createGame(Math.floor(Math.random() * 1_000_000), arg as Schwierigkeit, laenge);
       phase = 'spiel';
       tab = 'stadt';
       sheet = null;
       haptic('tap');
+      break;
+    case 'laenge':
+      laenge = arg as G.Laenge;
+      tap();
       break;
     case 'weiter': {
       const gespeichert = ladeSpielstand();
@@ -522,6 +625,10 @@ app.addEventListener('click', (e) => {
     case 'sell':
       result(G.sell(s, arg as Good));
       break;
+    case 'kurs':
+      sheet = { type: 'kurs', good: arg as Good };
+      haptic('tap');
+      break;
     case 'fulfill':
       result(G.fulfill(s, Number(arg)));
       break;
@@ -546,6 +653,14 @@ app.addEventListener('click', (e) => {
       break;
     case 'vibration':
       vibrationUmschalten();
+      haptic('tap');
+      break;
+    case 'ton':
+      tonUmschalten();
+      haptic('tap');
+      break;
+    case 'musik':
+      musikUmschalten();
       haptic('tap');
       break;
     case 'gold': {
@@ -575,7 +690,7 @@ app.addEventListener('click', (e) => {
       break;
     case 'devruf':
       s.ruf += 5;
-      if (s.ruf >= G.CFG.winRuf && s.status === 'playing') {
+      if (s.ruf >= s.ziel && s.status === 'playing') {
         s.status = 'won';
         s.log.push('Gildenvorsteher (Dev).');
       }
@@ -596,11 +711,29 @@ app.addEventListener('click', (e) => {
       sheet = null;
       break;
   }
+
+  // Rangaufstieg: Popup mit dem Vorteil des neuen Rangs.
+  if (phase === 'spiel') {
+    const rangNachher = G.RANG.indexOf(G.rangOf(s.ruf));
+    if (act !== 'start' && act !== 'weiter' && rangNachher > rangVorher) {
+      const r = G.rangOf(s.ruf);
+      sheet = { type: 'rang', name: r.name, bonus: r.bonus };
+      haptic('rang');
+    }
+  }
+
   automatischSichern();
   render();
 });
 
+// Kurzes Tippgeräusch und Vibration ohne Zustandsänderung.
+function tap() {
+  haptic('tap');
+}
+
 render();
+setTon(tonAn);
+setMusik(musikAn);
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register('./sw.js');

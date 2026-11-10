@@ -1,4 +1,4 @@
-import { type GameState, leererEinkauf, leereTrends } from './state';
+import { type GameState, CFG, leererEinkauf, leereTrends, verlaufStart } from './state';
 
 export const SAVE_KEY = 'gildenstadt-spielstand-v1';
 
@@ -31,6 +31,10 @@ export function deserialize(text: string): GameState | null {
       ...o,
       einkauf: o.einkauf ?? leererEinkauf(),
       kursTrend: o.kursTrend ?? leereTrends(),
+      maxRunden: o.maxRunden ?? CFG.maxTurns,
+      ziel: o.ziel ?? CFG.winRuf,
+      kursVerlauf: o.kursVerlauf ?? verlaufStart(o.prices as GameState['prices']),
+      lagerTrend: o.lagerTrend ?? leereTrends(),
     } as GameState;
   } catch {
     return null;

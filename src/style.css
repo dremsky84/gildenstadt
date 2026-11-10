@@ -60,6 +60,15 @@ header .stats, .muted, small { color: var(--muted); font-size: 0.85rem; }
 .dev-btns { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .dev-btns button { flex: 1 1 45%; }
 .gold { cursor: pointer; user-select: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.chip { flex: 1 1 40%; }
+.chip.sel, button.sel { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.einstellungen { margin-top: 12px; }
+.btns.wrap { flex-wrap: wrap; }
+.kurs-link { cursor: pointer; }
+.kurs-link small { color: var(--accent); }
+.chart { width: 100%; height: auto; display: block; margin: 8px 0; background: #221f1a; border-radius: 10px; }
+.res small { font-size: 0.75rem; margin-top: 2px; }
 .gold small { font-size: 0.7rem; color: var(--bad); margin-left: 4px; }
 .opt .ico svg { width: 40px; height: 40px; flex: none; display: block; }
 .opt .txt { flex: 1; }

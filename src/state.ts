@@ -71,6 +71,8 @@ export interface RoundReport {
   popDelta: number;
   popNow: number;
   rival: string | null;
+  wissen: number;
+  steuer: number;
 }
 
 export interface Rival {
@@ -106,18 +108,29 @@ export interface GameState {
   schwierigkeit: Schwierigkeit;
   rivals: Rival[];
   buendnis: Buendnis | null;
+  maxRunden: number;
+  ziel: number;
+  kursVerlauf: Record<Good, number[]>;
+  lagerTrend: Record<Good, number>;
 }
 
 export const CFG = balance;
 export const GOODS = Object.keys(balance.goods) as Good[];
 export const BUILDINGS = Object.keys(balance.buildings) as BuildingId[];
-export const RANG = balance.rang as { ruf: number; name: string }[];
+export const RANG = balance.rang as { ruf: number; name: string; bonus: number }[];
 export const ZWEIGE = balance.forschung.zweige as unknown as Zweigdef[];
 export const RIVALEN = balance.rivalen as unknown as Record<RivalId, RivalDef>;
 export const RIVAL_IDS = Object.keys(balance.rivalen) as RivalId[];
 export const SCHWIERIGKEIT = balance.schwierigkeit as unknown as Record<Schwierigkeit, number>;
 export const SCHWIERIGKEITEN = Object.keys(balance.schwierigkeit) as Schwierigkeit[];
 export const BUENDNIS = balance.buendnis as { dauer: number; bruchRuf: number; haendlerGold: number };
+
+// Partielängen: kurz ist die Grundpartie, lang verlängert die Runden und hebt das Ziel.
+export type Laenge = 'kurz' | 'lang';
+export const PARTIEN: Record<Laenge, { runden: number; ziel: number }> = {
+  kurz: { runden: CFG.maxTurns, ziel: CFG.winRuf },
+  lang: balance.partie.lang,
+};
 
 const GOODDEF = balance.goods as Record<Good, { label: string; base: number }>;
 const BLD = balance.buildings as unknown as Record<BuildingId, BuildingDef>;
@@ -131,6 +144,14 @@ export function rangOf(ruf: number) {
   for (const x of RANG) if (ruf >= x.ruf) r = x;
   return r;
 }
+
+// Rangbonus: mehr Gold bei Aufträgen, je höher der Rang.
+export function rangBonus(ruf: number): number {
+  return rangOf(ruf).bonus;
+}
+
+export const verlaufStart = (prices: Record<Good, number>): Record<Good, number[]> =>
+  Object.fromEntries(GOODS.map((g) => [g, [Math.round(prices[g])]])) as Record<Good, number[]>;
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
@@ -211,7 +232,7 @@ export const leererEinkauf = (): Record<Good, { menge: number; wert: number }> =
 export const leereTrends = (): Record<Good, number> =>
   Object.fromEntries(GOODS.map((g) => [g, 0])) as Record<Good, number>;
 
-export function createGame(seed = 1, schwierigkeit: Schwierigkeit = 'geselle'): GameState {
+export function createGame(seed = 1, schwierigkeit: Schwierigkeit = 'geselle', laenge: Laenge = 'kurz'): GameState {
   const s: GameState = {
     seed,
     turn: 1,
@@ -235,7 +256,12 @@ export function createGame(seed = 1, schwierigkeit: Schwierigkeit = 'geselle'): 
     schwierigkeit,
     rivals: [],
     buendnis: null,
+    maxRunden: PARTIEN[laenge].runden,
+    ziel: PARTIEN[laenge].ziel,
+    kursVerlauf: {} as Record<Good, number[]>,
+    lagerTrend: leereTrends(),
   };
+  s.kursVerlauf = verlaufStart(s.prices);
   for (let i = 0; i < 3; i++) addContract(s);
 
   // Zwei der drei Rivalen werden zufällig ausgelost.
@@ -325,14 +351,14 @@ export function fulfill(s: GameState, id: number): string | null {
   const c = s.contracts.find((x) => x.id === id);
   if (!c) return 'Auftrag nicht mehr verfügbar.';
   if (s.inv[c.good] < c.amount) return `Dir fehlen ${c.amount - s.inv[c.good]} ${label(c.good)}.`;
-  const gold = Math.round(c.gold * (1 + summe(s, 'auftragsbonus')));
+  const gold = Math.round(c.gold * (1 + summe(s, 'auftragsbonus') + rangBonus(s.ruf)));
   s.inv[c.good] -= c.amount;
   abgleichen(s);
   s.gold += gold;
   s.ruf += c.ruf;
   s.contracts = s.contracts.filter((x) => x.id !== id);
   s.log.push(`Auftrag erfüllt: +${gold} Gold, +${c.ruf} Ruf.`);
-  if (s.ruf >= CFG.winRuf) {
+  if (s.ruf >= s.ziel) {
     s.status = 'won';
     s.log.push('Du bist Gildenvorsteher!');
   }
@@ -384,6 +410,7 @@ export function endTurn(s: GameState): void {
 
   const zufBefore = s.zufriedenheit;
   const kursVorher = { ...s.prices };
+  const lagerVorher = { ...s.inv };
   const popBefore = s.pop;
   const produced: Partial<Record<Good, number>> = {};
   const consumed: Partial<Record<Good, number>> = {};
@@ -416,6 +443,8 @@ export function endTurn(s: GameState): void {
 
   // 1. Produktion
   let stalled = 0;
+  let wissenGewonnen = 0;
+  let steuer = 0;
   for (const id of s.slots) {
     if (!id) continue;
     const d = DEF(id);
@@ -432,7 +461,10 @@ export function endTurn(s: GameState): void {
         s.inv[g] += n;
         produced[g] = (produced[g] ?? 0) + n;
       }
-      if (d.wissen) s.wissen += d.wissen;
+      if (d.wissen) {
+        s.wissen += d.wissen;
+        wissenGewonnen += d.wissen;
+      }
     } else {
       stalled++;
     }
@@ -453,6 +485,10 @@ export function endTurn(s: GameState): void {
   s.zufriedenheit += tuchUsed < tuchNeed ? Z.tuchFehlt : Z.tuchOk;
   s.zufriedenheit += summe(s, 'zufriedenheit');
   s.zufriedenheit = clamp(s.zufriedenheit, 0, 100);
+
+  // 2b. Steuern: jeder Einwohner zahlt pro Runde
+  steuer = s.pop * CFG.steuerProEinwohner;
+  s.gold += steuer;
 
   // 3. Bevölkerung wächst nur bei voller Versorgung, schrumpft bei sehr geringer Zufriedenheit
   const versorgt = brotUsed >= brotNeed && tuchUsed >= tuchNeed;
@@ -488,9 +524,9 @@ export function endTurn(s: GameState): void {
         rivalMeldungen.push(`${c.label} hat den Auftrag über ${pick.amount} ${label(pick.good)} übernommen.`);
       }
     }
-    if (r.ruf >= CFG.winRuf && s.status === 'playing') {
+    if (r.ruf >= s.ziel && s.status === 'playing') {
       s.status = 'lost';
-      s.log.push(`${c.label} hat ${CFG.winRuf} Ruf erreicht. Die Partie ist verloren.`);
+      s.log.push(`${c.label} hat ${s.ziel} Ruf erreicht. Die Partie ist verloren.`);
     }
   }
   if (rivalMeldungen.length) {
@@ -504,6 +540,8 @@ export function endTurn(s: GameState): void {
 
   // Kursentwicklung dieser Runde (nur die Marktbewegung, nicht die Käufe des Spielers)
   for (const g of GOODS) s.kursTrend[g] = s.prices[g] / kursVorher[g] - 1;
+  for (const g of GOODS) s.lagerTrend[g] = s.inv[g] - lagerVorher[g];
+  for (const g of GOODS) s.kursVerlauf[g] = [...s.kursVerlauf[g], Math.round(s.prices[g])].slice(-10);
   abgleichen(s);
 
   // 7. Rundenbericht und nächste Runde
@@ -517,9 +555,11 @@ export function endTurn(s: GameState): void {
     popDelta: s.pop - popBefore,
     popNow: s.pop,
     rival,
+    wissen: wissenGewonnen,
+    steuer,
   };
   s.turn++;
-  if (s.turn > CFG.maxTurns && s.status === 'playing') {
+  if (s.turn > s.maxRunden && s.status === 'playing') {
     const best = Math.max(0, ...s.rivals.map((r) => r.ruf));
     if (s.ruf >= best) {
       s.status = 'won';

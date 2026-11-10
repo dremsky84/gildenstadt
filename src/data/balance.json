@@ -15,6 +15,8 @@
   "maxPop": 12,
   "maxTurns": 20,
   "winRuf": 40,
+  "partie": { "lang": { "runden": 30, "ziel": 55 } },
+  "steuerProEinwohner": 2,
   "slots": 12,
   "goods": {
     "holz": { "label": "Holz", "base": 5 },
@@ -32,7 +34,7 @@
     "baeckerei": { "label": "Bäckerei", "text": "Backt aus Getreide Brot. Brot versorgt die Bevölkerung.","cost": { "gold": 50, "holz": 6 }, "in": { "getreide": 2 }, "out": { "brot": 2 } },
     "weberei": { "label": "Weberei", "text": "Webt aus Getreide Tuch. Tuch versorgt die Bevölkerung.","cost": { "gold": 50, "holz": 4 }, "in": { "getreide": 1 }, "out": { "tuch": 1 } },
     "schreibstube": { "label": "Schreibstube", "text": "Sammelt Wissen. Jede Runde Wissen für die Forschung.","cost": { "gold": 40, "holz": 4 }, "in": { "holz": 1 }, "out": {}, "wissen": 2 },
-    "werkstatt": { "label": "Werkstatt", "text": "Verarbeitet Holz zu Werkzeug. Muss erst erforscht werden.","cost": { "gold": 60, "holz": 6 }, "in": { "holz": 2 }, "out": { "werkzeug": 1 }, "freigabe": "werkstatt" }
+    "werkstatt": { "label": "Werkstatt", "text": "Verarbeitet Holz zu Werkzeug.","cost": { "gold": 60, "holz": 6 }, "in": { "holz": 2 }, "out": { "werkzeug": 1 }, "freigabe": "werkstatt" }
   },
   "forschung": {
     "zweige": [
@@ -76,10 +78,10 @@
   },
   "buendnis": { "dauer": 5, "bruchRuf": 3, "haendlerGold": 15 },
   "rang": [
-    { "ruf": 0, "name": "Lehrling" },
-    { "ruf": 10, "name": "Geselle" },
-    { "ruf": 20, "name": "Meister" },
-    { "ruf": 30, "name": "Altmeister" },
-    { "ruf": 40, "name": "Gildenvorsteher" }
+    { "ruf": 0, "name": "Lehrling", "bonus": 0 },
+    { "ruf": 10, "name": "Geselle", "bonus": 0.05 },
+    { "ruf": 20, "name": "Meister", "bonus": 0.1 },
+    { "ruf": 30, "name": "Altmeister", "bonus": 0.15 },
+    { "ruf": 40, "name": "Gildenvorsteher", "bonus": 0.2 }
   ]
 }
